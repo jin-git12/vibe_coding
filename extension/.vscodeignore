@@ -1,0 +1,22 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+.yarnrc
+vsc-extension-quickstart.md
+**/tsconfig.json
+**/.eslintrc.json
+**/*.map
+**/*.ts
+node_modules/**
+!node_modules/@vscode/codicons/**
+pnpm-lock.yaml
+
+# Python backend - keep only necessary files
+python_agents/.venv/**
+python_agents/__pycache__/**
+python_agents/**/__pycache__/**
+python_agents/**/*.pyc
+python_agents/.git/**
+python_agents/test_communication.py
+

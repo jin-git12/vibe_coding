@@ -1,0 +1,226 @@
+{
+  "name": "vibe-coding",
+  "displayName": "Vibe Coding - AI Code Assistant",
+  "description": "AI-powered code assistant with deepagents, featuring intelligent sidebar and chat",
+  "version": "0.1.0",
+  "publisher": "vibe-coding",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "assistant",
+    "code-generation",
+    "deepagents",
+    "qwen",
+    "cursor-alternative"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vibe-coding-sidebar",
+          "title": "Vibe Coding AI",
+          "icon": "resources/icons/logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "vibe-coding-sidebar": [
+        {
+          "id": "vibe-coding-chat",
+          "name": "Chat",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "vibe-coding.generateCode",
+        "title": "Generate Code",
+        "category": "Vibe Coding"
+      },
+      {
+        "command": "vibe-coding.explainCode",
+        "title": "Explain Code",
+        "category": "Vibe Coding"
+      },
+      {
+        "command": "vibe-coding.refactorCode",
+        "title": "Refactor Code",
+        "category": "Vibe Coding"
+      },
+      {
+        "command": "vibe-coding.reviewCode",
+        "title": "Review Code",
+        "category": "Vibe Coding"
+      },
+      {
+        "command": "vibe-coding.searchCode",
+        "title": "Search Codebase",
+        "category": "Vibe Coding"
+      },
+      {
+        "command": "vibe-coding.openChat",
+        "title": "Open AI Chat",
+        "category": "Vibe Coding"
+      },
+      {
+        "command": "vibe-coding.newConversation",
+        "title": "New Chat",
+        "category": "Vibe Coding",
+        "icon": "$(add)"
+      },
+      {
+        "command": "vibe-coding.showHistory",
+        "title": "Chat History",
+        "category": "Vibe Coding",
+        "icon": "$(history)"
+      },
+      {
+        "command": "vibe-coding.showChatMenu",
+        "title": "More Actions",
+        "category": "Vibe Coding",
+        "icon": "$(ellipsis)"
+      },
+      {
+        "command": "vibe-coding.showLogs",
+        "title": "Show Logs",
+        "category": "Vibe Coding",
+        "icon": "$(output)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "vibe-coding.newConversation",
+          "when": "view == vibe-coding-chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vibe-coding.showHistory",
+          "when": "view == vibe-coding-chat",
+          "group": "navigation@2"
+        },
+        {
+          "command": "vibe-coding.showChatMenu",
+          "when": "view == vibe-coding-chat",
+          "group": "navigation@3"
+        }
+      ],
+      "editor/context": [
+        {
+          "when": "editorHasSelection",
+          "command": "vibe-coding.explainCode",
+          "group": "vibe-coding@1"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "vibe-coding.refactorCode",
+          "group": "vibe-coding@2"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "vibe-coding.reviewCode",
+          "group": "vibe-coding@3"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "vibe-coding.generateCode",
+        "key": "ctrl+shift+g",
+        "mac": "cmd+shift+g",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "vibe-coding.openChat",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l"
+      }
+    ],
+    "configuration": {
+      "title": "Vibe Coding",
+      "properties": {
+        "vibe-coding.dashscopeApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "DashScope API Key for Qwen models",
+          "order": 1
+        },
+        "vibe-coding.model": {
+          "type": "string",
+          "default": "qwen-turbo",
+          "enum": [
+            "qwen-turbo",
+            "qwen-plus",
+            "qwen-max"
+          ],
+          "description": "Qwen model to use",
+          "order": 2
+        },
+        "vibe-coding.dashscopeBaseUrl": {
+          "type": "string",
+          "default": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+          "description": "DashScope API base URL",
+          "order": 3
+        },
+        "vibe-coding.enableAutoComplete": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AI-powered auto-completion",
+          "order": 4
+        },
+        "vibe-coding.maxContextFiles": {
+          "type": "number",
+          "default": 5,
+          "description": "Maximum number of context files to include",
+          "order": 5
+        },
+        "vibe-coding.streamResponse": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable streaming responses in chat",
+          "order": 6
+        },
+        "vibe-coding.pythonPath": {
+          "type": "string",
+          "default": "uv",
+          "description": "Path to Python/uv executable",
+          "order": 7
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "pnpm run compile",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package --no-dependencies",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vscode/test-electron": "^2.3.0",
+    "@vscode/vsce": "^2.19.0",
+    "eslint": "^8.40.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@vscode/codicons": "^0.0.41"
+  }
+}

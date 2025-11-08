@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="chat.css">
+    <title>Vibe Coding Chat</title>
+</head>
+<body>
+    <!-- 会话标签栏 -->
+    <div class="tabs-bar">
+        <div id="conversation-tabs" class="tabs-container"></div>
+    </div>
+    
+    <!-- 聊天内容区域 -->
+    <div id="chat-container">
+        <div id="messages"></div>
+        <div id="loading" class="loading hidden">
+            <div class="message-avatar">🤖</div>
+            <div class="message-body">
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            </div>
+        </div>
+        <div id="suggestions" class="suggestions hidden"></div>
+    </div>
+    
+    <!-- 输入框 -->
+    <div id="input-container">
+        <div class="input-wrapper">
+            <!-- 输入区域 -->
+            <textarea id="message-input" placeholder="Plan, @ for context, / for commands" rows="1"></textarea>
+            
+            <!-- 工具栏 -->
+            <div class="input-toolbar">
+                <!-- 左侧：模型选择 -->
+                <button class="toolbar-btn" id="model-selector" title="Select Model">
+                    <span class="toolbar-label">Sonnet 4.5</span>
+                    <span class="codicon codicon-chevron-down"></span>
+                </button>
+                
+                <div class="toolbar-spacer"></div>
+                
+                <!-- 右侧：功能按钮 -->
+                <button class="toolbar-icon-btn" id="context-usage" title="Context usage">
+                    <span class="codicon codicon-circle-outline"></span>
+                </button>
+                <button class="toolbar-icon-btn" id="attach-context" title="Add context (@)">
+                    <span class="codicon codicon-mention"></span>
+                </button>
+                <button class="toolbar-icon-btn" id="image-btn" title="Add image">
+                    <span class="codicon codicon-file-media"></span>
+                </button>
+                <button id="send-button" class="toolbar-icon-btn toolbar-send" title="Send (Ctrl+Enter)">
+                    <span class="codicon codicon-arrow-up"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+    <script src="chat.js"></script>
+</body>
+</html>
+
