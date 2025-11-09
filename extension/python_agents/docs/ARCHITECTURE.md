@@ -1,513 +1,465 @@
-# Python Agents 架构文档
+# Vibe Coding - 架构文档
 
-## 📋 概述
+## 概述
 
-Vibe Coding Python 后端基于 **DeepAgents** 框架和 **LangChain** 生态系统，通过 **JSON-RPC 2.0** 协议与 VS Code 扩展通信。
+Vibe Coding 是一个基于 **DeepAgents** 的 VSCode AI 编程助手扩展，采用**统一 Agent 架构**，通过单一聊天界面完成所有操作。
 
-### 技术栈
-
-- **DeepAgents** (>=0.2.5) - AI Agent 框架，提供规划、文件系统和子 Agent 能力
-- **LangChain** (>=1.0.2) - LLM 应用框架
-- **LangGraph** - Agent 状态管理和工作流
-- **Qwen LLM** - 通义千问大语言模型（通过 DashScope API）
-- **Python 3.11+** - 运行时环境
-- **uv** - 包管理器
-
-## 🏗️ 系统架构
+## 核心架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                  VS Code Extension (TypeScript)              │
-│                                                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │ Commands │  │ WebView  │  │  UI      │  │ Services │   │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘   │
-│       └───────────────┴────────────┴────────────┬─────────┘
-│                                                   │
-│                              JSON-RPC via stdin/stdout
-│                                                   │
-└───────────────────────────────────────────────────┼─────────┘
-                                                    │
-┌───────────────────────────────────────────────────┼─────────┐
-│                   Python Agent Server             │         │
-│                                                    ▼         │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │                  JSON-RPC Server                      │  │
-│  │  (stdin/stdout 通信, 方法路由, 错误处理)            │  │
-│  └──────────────────────────┬───────────────────────────┘  │
-│                             │                               │
-│  ┌──────────────────────────▼───────────────────────────┐  │
-│  │                    Agent Server                       │  │
-│  │  (初始化, Agent 管理, RPC 方法实现)                 │  │
-│  └──────────────────────────┬───────────────────────────┘  │
-│                             │                               │
-│         ┌───────────────────┼───────────────────┐          │
-│         │                   │                   │          │
-│  ┌──────▼───────┐  ┌────────▼────────┐  ┌──────▼──────┐  │
-│  │ Code         │  │ Chat            │  │ Refactor    │  │
-│  │ Generator    │  │ Agent           │  │ Agent       │  │
-│  └──────┬───────┘  └────────┬────────┘  └──────┬──────┘  │
-│         └───────────────────┼───────────────────┘          │
-│                             │                               │
-│  ┌──────────────────────────▼───────────────────────────┐  │
-│  │              DeepAgents Framework                     │  │
-│  │                                                        │  │
-│  │  ┌─────────────────┐  ┌─────────────────────────┐   │  │
-│  │  │ TodoListMW      │  │ FilesystemMiddleware    │   │  │
-│  │  │ (Planning)      │  │ (File Operations)       │   │  │
-│  │  └─────────────────┘  └─────────────────────────┘   │  │
-│  │                                                        │  │
-│  │  ┌─────────────────┐  ┌─────────────────────────┐   │  │
-│  │  │ SubAgentMW      │  │ Custom Tools            │   │  │
-│  │  │ (Subagents)     │  │ (AST Analysis, etc)     │   │  │
-│  │  └─────────────────┘  └─────────────────────────┘   │  │
-│  └──────────────────────────┬───────────────────────────┘  │
-│                             │                               │
-│  ┌──────────────────────────▼───────────────────────────┐  │
-│  │                 Qwen LLM (DashScope)                  │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                  VS Code Extension (TypeScript)          │
+│  - UI (ChatPanel, TreeViews, StatusBar)                │
+│  - Commands & Event Handlers                            │
+└─────────────────┬───────────────────────────────────────┘
+                  │ JSON-RPC over stdio
+┌─────────────────▼───────────────────────────────────────┐
+│              Python Agent Server                         │
+│  - RPC Server (agent_server.py)                         │
+│  - Unified Agent (统一入口)                              │
+│  - 3 Specialized Subagents                              │
+└─────────────────┬───────────────────────────────────────┘
+                  │
+      ┌───────────┼───────────┐
+      ▼           ▼           ▼
+  code-gen   code-exp    refactor
+  Subagent   Subagent    Subagent
+      │           │           │
+      └───────────┴───────────┘
+                  │
+      ┌───────────▼───────────┐
+      │   LLM API (Qwen/etc)  │
+      └───────────────────────┘
 ```
 
-## 📁 目录结构
+## 统一 Agent 架构
 
+### 设计理念
+
+**类似 Cursor 的体验**: 所有操作通过一个聊天框完成，Agent 自动判断并委派给专业 subagent。
+
+**核心优势**:
+- 🎯 **单一入口**: 用户只需在聊天框输入需求
+- 🤖 **智能分派**: 主 agent 自动判断任务类型并委派
+- 💾 **统一记忆**: 所有 subagents 共享会话历史
+- 🔄 **无缝切换**: 在同一会话中可以自由切换任务类型
+- 🚀 **易扩展**: 添加新功能只需增加 subagent
+
+### 主 Agent (Unified Agent)
+
+**文件**: `src/agents/unified_agent.py`
+
+```python
+def create_unified_chat_agent(llm, custom_tools, backend=None):
+    """创建统一的聊天 agent，包含 3 个专业 subagents"""
+    
+    # 主 agent 的系统提示
+    system_prompt = """You are an expert AI coding assistant.
+    
+    For specialized tasks, delegate to your subagents:
+    - code-generator: Generate new code
+    - code-explainer: Explain existing code  
+    - refactoring: Improve code quality
+    
+    Use the 'task' tool to delegate when appropriate."""
+    
+    # 定义 3 个 subagents
+    subagents = [
+        {
+            "name": "code-generator",
+            "agent": create_deep_agent(...),
+            "description": "Generate high-quality code"
+        },
+        {
+            "name": "code-explainer", 
+            "agent": create_deep_agent(...),
+            "description": "Explain code clearly"
+        },
+        {
+            "name": "refactoring",
+            "agent": create_deep_agent(...),
+            "description": "Refactor and improve code"
+        }
+    ]
+    
+    # 创建主 agent
+    return create_deep_agent(
+        model=llm,
+        system_prompt=system_prompt,
+        tools=custom_tools,
+        subagents=subagents,
+        backend=backend  # 共享 checkpointer
+    )
 ```
-python_agents/
-├── src/
-│   ├── agent_server.py          # 🚀 主入口，RPC 服务器
-│   │
-│   ├── agents/                  # 🤖 Agent 层
-│   │   ├── __init__.py         
-│   │   └── code_agents.py       # DeepAgents 创建函数（所有 agent）
-│   │
-│   ├── tools/                   # 🔧 自定义工具层
-│   │   ├── __init__.py
-│   │   └── ast_tools.py         # Python AST 分析工具
-│   │
-│   ├── utils/                   # 🛠️ 工具模块
-│   │   ├── __init__.py
-│   │   ├── llm_client.py        # LLM 客户端封装
-│   │   ├── context_builder.py   # 上下文构建器
-│   │   ├── security.py          # 安全检查器
-│   │   └── logger.py            # 日志工具
-│   │
-│   ├── config/                  # ⚙️ 配置层
-│   │   ├── __init__.py
-│   │   ├── settings.py          # 环境变量和配置
-│   │   └── prompts.py           # System Prompt 模板
-│   │
-│   └── rpc/                     # 🔌 RPC 通信层
-│       ├── __init__.py
-│       ├── server.py            # JSON-RPC 服务器实现
-│       ├── protocol.py          # 协议定义和消息格式
-│       └── errors.py            # 错误类型定义
-│
-├── tests/                       # 🧪 测试
-│   ├── README.md
-│   ├── test_deepagents_implementation.py
-│   └── quick_test.py
-│
-├── docs/                        # 📚 文档
-│   ├── README.md
-│   ├── ARCHITECTURE.md          # 本文档
-│   ├── DEVELOPMENT.md           # 开发指南
-│   └── PACKAGE_MANAGEMENT.md    # 包管理说明
-│
-├── pyproject.toml               # 项目配置
-├── uv.lock                      # 依赖锁文件
-├── .env                         # 环境变量（不提交）
-└── README.md                    # 项目说明
-```
 
-## 🎯 核心组件
+### 三个专业 Subagents
 
-### 1. Agent Server (`agent_server.py`)
+#### 1. Code Generator (代码生成)
+- **职责**: 生成新代码
+- **特点**:
+  - 生产就绪的代码质量
+  - 包含类型提示和文档
+  - 完善的错误处理
+  - 考虑性能和安全性
 
-**职责**：
-- 启动 JSON-RPC 服务器
-- 初始化所有 Agent
-- 实现 RPC 方法
-- 管理会话和上下文
+#### 2. Code Explainer (代码解释)
+- **职责**: 解释现有代码
+- **特点**:
+  - 高层次概览
+  - 逻辑流程分析
+  - 复杂度讨论
+  - 最佳实践建议
 
-**关键方法**：
+#### 3. Refactoring (代码重构)
+- **职责**: 改进代码质量
+- **特点**:
+  - 应用设计模式
+  - 性能优化
+  - 可读性提升
+  - 保持功能完整
+
+## 技术栈
+
+### 前端 (TypeScript)
+- **VS Code Extension API**: 扩展开发
+- **WebView**: 聊天 UI
+- **JSON-RPC Client**: 与 Python 通信
+
+### 后端 (Python)
+- **DeepAgents**: Agent 框架（基于 LangGraph）
+- **LangGraph**: 底层状态图编排
+- **LangChain**: LLM 集成和工具
+- **MemorySaver**: 对话历史管理
+
+## 核心组件
+
+### 1. RPC Server (`agent_server.py`)
+
 ```python
 class AgentServer:
-    def __init__(self, workspace_root: str)
-    def _initialize_agents(self)      # 初始化所有 Agent
-    def health_check(self)             # 健康检查
-    def chat(self, params: dict)       # 聊天
-    def generate_code(self, params)    # 代码生成
-    def explain_code(self, params)     # 代码解释
-    def refactor_code(self, params)    # 代码重构
-    def shutdown(self)                 # 优雅关闭
+    def __init__(self, workspace_root: str):
+        self.rpc_server = JSONRPCServer()
+        self.checkpointer = MemorySaver()  # 会话历史
+        self.unified_agent = create_unified_chat_agent(...)
+        
+    def chat(self, params: dict) -> dict:
+        """统一的聊天接口"""
+        result = self.unified_agent.invoke(
+            {"messages": [{"role": "user", "content": message}]},
+            {"configurable": {"thread_id": conversation_id}}
+        )
+        return result
 ```
 
-### 2. DeepAgents (`agents/code_agents.py`)
+**RPC 方法**:
+- `chat`: 聊天（统一入口，委派给 subagents）
+- `generate_code`: 代码生成（委派给 code-generator）
+- `explain_code`: 代码解释（委派给 code-explainer）
+- `refactor_code`: 代码重构（委派给 refactoring）
 
-**职责**：创建各种专门的 AI Agent
+> 注：`generate_code`、`explain_code`、`refactor_code` 实际上都是调用 `unified_agent`，
+> 保留这些方法只是为了兼容前端的不同调用方式。
 
-**关键函数**：
-```python
-def create_code_generator_agent(llm, custom_tools) -> CompiledStateGraph
-    """创建代码生成 Agent"""
+### 2. 会话历史管理
 
-def create_chat_agent(llm, custom_tools) -> CompiledStateGraph
-    """创建通用聊天 Agent"""
-
-def create_code_explainer_agent(llm, custom_tools) -> CompiledStateGraph
-    """创建代码解释 Agent"""
-
-def create_refactoring_agent(llm, custom_tools) -> CompiledStateGraph
-    """创建代码重构 Agent"""
-
-def create_custom_tools(ast_tools) -> List[BaseTool]
-    """创建自定义工具列表"""
-```
-
-**内置能力**（通过 DeepAgents 中间件）：
-- ✅ **TodoListMiddleware** - 任务规划和分解（`write_todos`）
-- ✅ **FilesystemMiddleware** - 文件系统操作
-  - `ls` - 列出目录
-  - `read_file` - 读取文件
-  - `write_file` - 写入文件
-  - `edit_file` - 编辑文件
-  - `grep_search` - 文本搜索（使用 ripgrep）
-  - `glob_search` - 文件名搜索
-- ✅ **SubAgentMiddleware** - 子 Agent 管理
-
-### 3. 自定义工具 (`tools/`)
-
-#### ASTTools (`ast_tools.py`)
-Python 代码静态分析工具：
+使用 LangGraph 的 **Checkpointer** 机制：
 
 ```python
-@tool
-def analyze_python_code(code: str) -> str:
-    """分析 Python 代码结构（函数、类、导入等）"""
-    # 使用 Python AST 解析代码
-    # 返回结构化信息
+from langgraph.checkpoint.memory import MemorySaver
 
-@tool
-def analyze_code_complexity(code: str) -> str:
-    """分析代码复杂度（圈复杂度、认知复杂度）"""
-    # 计算复杂度指标
-    # 返回复杂度报告
+# 创建 checkpointer
+checkpointer = MemorySaver()
+
+# 创建 agent 时传入
+unified_agent = create_unified_chat_agent(
+    llm, 
+    tools, 
+    backend=checkpointer
+)
+
+# 调用时指定 thread_id
+result = unified_agent.invoke(
+    {"messages": [...]},
+    {"configurable": {"thread_id": "user-session-123"}}
+)
 ```
 
-**注意**：不再需要 `FileTools` 和 `SearchTools`，DeepAgents 已内置。
+**特性**:
+- ✅ 每个会话独立隔离
+- ✅ 支持多轮对话
+- ✅ Subagents 共享会话历史
+- ✅ 内存高效（使用 MemorySaver）
 
-### 4. Utils 层
+### 3. 工具系统
 
-#### LLMClient (`utils/llm_client.py`)
-统一的 LLM 客户端接口：
+#### DeepAgents 内置工具
+通过 `FilesystemMiddleware` 自动提供：
+- `ls`: 列出目录
+- `read_file`: 读取文件（支持行范围）
+- `write_file`: 写入文件
+- `edit_file`: 编辑文件（搜索替换）
+- `grep_search`: 正则搜索
+- `glob_search`: glob 模式搜索
+- `write_todos`: 任务规划
+
+#### 自定义工具
+**文件**: `src/agents/code_agents.py`
 
 ```python
-class LLMClient:
-    """支持 DashScope (Qwen) 和 OpenAI"""
-    
-    def create_chat_llm(config: LLMConfig) -> BaseChatModel
-    def create_streaming_llm(config: LLMConfig) -> BaseChatModel
+def create_custom_tools(ast_tools=None):
+    """创建额外的自定义工具"""
+    return [
+        analyze_python_code,      # Python 结构分析
+        analyze_code_complexity,  # 复杂度分析
+    ]
 ```
 
-#### ContextBuilder (`utils/context_builder.py`)
-上下文信息收集：
+### 4. LLM 配置
 
-```python
-class ContextBuilder:
-    def build_code_context(file_path, selected_code, ...)
-    def get_related_files(current_file, ...)
-    def format_context_for_llm(context_info)
-```
-
-#### SecurityChecker (`utils/security.py`)
-安全验证：
-
-```python
-class SecurityChecker:
-    def is_path_safe(path: str) -> bool
-    def is_command_allowed(command: str) -> bool
-    def sanitize_input(text: str) -> str
-```
-
-### 5. Config 层
-
-#### Settings (`config/settings.py`)
-环境配置管理：
+**文件**: `src/config/settings.py`
 
 ```python
 class Settings:
-    # LLM 配置
-    DASHSCOPE_API_KEY: str
-    QWEN_MODEL: str = "qwen-turbo"
-    LLM_TEMPERATURE: float = 0.7
+    # LLM 配置优先级：
+    # 1. LLM_MODEL 环境变量
+    # 2. QWEN_MODEL 环境变量  
+    # 3. 开发模式: qwen-turbo
+    # 4. 生产模式: qwen-max
     
-    # 工作区配置
-    WORKSPACE_ROOT: str
-    
-    # 日志配置
-    LOG_LEVEL: str = "INFO"
+    llm_model = os.environ.get(
+        "LLM_MODEL", 
+        os.environ.get("QWEN_MODEL", default_model)
+    )
 ```
 
-#### Prompts (`config/prompts.py`)
-System Prompt 模板：
+**支持的 LLM**:
+- Qwen (通义千问)
+- OpenAI-compatible APIs
+- 其他支持 LangChain 的模型
 
-```python
-CODE_GENERATOR_PROMPT = """You are an expert code generator..."""
-CHAT_AGENT_PROMPT = """You are a helpful AI coding assistant..."""
-CODE_EXPLAINER_PROMPT = """You are an expert at explaining code..."""
-REFACTORING_PROMPT = """You are a code refactoring expert..."""
-```
+## 通信协议
 
-### 6. RPC 层
+### JSON-RPC over stdio
 
-#### JSONRPCServer (`rpc/server.py`)
-JSON-RPC 2.0 协议实现：
-
-```python
-class JSONRPCServer:
-    def register_method(self, name: str, handler: Callable)
-    def handle_request(self, request: dict) -> dict
-    def send_notification(self, method: str, params: dict)
-    def run(self)  # 主循环（读取 stdin，写入 stdout）
-```
-
-## 📡 通信协议
-
-### JSON-RPC 2.0
-
-**请求格式**：
-```json
+```javascript
+// 前端发送请求
 {
   "jsonrpc": "2.0",
-  "method": "method_name",
-  "params": { /* 参数 */ },
-  "id": 1
+  "id": 1,
+  "method": "chat",
+  "params": {
+    "message": "帮我生成一个斐波那契函数",
+    "conversationId": "session-123"
+  }
+}
+
+// 后端返回响应
+{
+  "jsonrpc": "2.0", 
+  "id": 1,
+  "result": {
+    "conversation_id": "session-123",
+    "full_response": "好的，我来生成...",
+    "suggestions": []
+  }
 }
 ```
 
-**成功响应**：
+## 数据流示例
+
+### 完整对话流程
+
+```
+用户: "帮我生成一个计算斐波那契数列的 Python 函数"
+  ↓
+VSCode Extension (agentBridge.chat)
+  ↓ JSON-RPC: chat(message, conversationId)
+Python RPC Server (agent_server.chat)
+  ↓
+Unified Agent 分析请求
+  → 判断：需要代码生成
+  → 使用 'task' 工具委派给 code-generator subagent
+  ↓
+Code Generator Subagent
+  → 生成代码
+  → 添加文档和类型提示
+  → 包含使用示例
+  ↓
+返回结果给主 Agent
+  ↓
+主 Agent 返回给用户
+  ↓
+VSCode 显示结果
+```
+
+### 多轮对话示例
+
+```
+[Session: conv-001]
+
+Round 1:
+用户: "生成一个快速排序函数"
+Agent: [委派 code-generator] → 生成代码
+
+Round 2:
+用户: "解释一下这个函数的复杂度"
+Agent: [委派 code-explainer] → 解释时间复杂度 O(n log n)
+
+Round 3:
+用户: "帮我优化一下"
+Agent: [委派 refactoring] → 提供优化建议并重构
+
+所有轮次共享同一个 thread_id="conv-001"
+```
+
+## 项目结构
+
+```
+extension/python_agents/
+├── src/
+│   ├── agent_server.py          # RPC 服务器主入口
+│   ├── agents/
+│   │   ├── __init__.py
+│   │   ├── unified_agent.py     # 统一 agent 定义
+│   │   └── code_agents.py       # 自定义工具
+│   ├── config/
+│   │   ├── settings.py          # 配置管理
+│   │   └── prompts.py           # 系统提示词
+│   ├── rpc/
+│   │   ├── protocol.py          # JSON-RPC 协议
+│   │   ├── server.py            # RPC 服务器
+│   │   └── errors.py            # 错误定义
+│   ├── tools/
+│   │   └── ast_tools.py         # AST 分析工具
+│   └── utils/
+│       ├── llm_client.py        # LLM 客户端
+│       ├── context_builder.py   # 上下文构建
+│       ├── logger.py            # 日志
+│       └── security.py          # 安全验证
+├── tests/                        # 测试
+├── docs/                         # 文档
+├── pyproject.toml               # Python 依赖
+└── uv.lock                      # 依赖锁文件
+```
+
+## 配置
+
+### 环境变量
+
+```bash
+# LLM 配置
+export LLM_MODEL="qwen-plus"          # 优先级最高
+export QWEN_MODEL="qwen3-coder-plus"  # 优先级次之
+export DASHSCOPE_API_KEY="your-key"   # API 密钥
+
+# 开发模式
+export DEV_MODE="true"                # 启用调试
+export PYTHONPATH="${PYTHONPATH}:./src"
+```
+
+### 调试配置
+
+**文件**: `.vscode/launch.json`
+
 ```json
 {
-  "jsonrpc": "2.0",
-  "result": { /* 结果 */ },
-  "id": 1
+  "configurations": [
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch"
+    },
+    {
+      "name": "Debug Python Backend",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {"host": "localhost", "port": 5678},
+      "cwd": "${workspaceFolder}/extension/python_agents"
+    }
+  ]
 }
 ```
 
-**错误响应**：
-```json
-{
-  "jsonrpc": "2.0",
-  "error": {
-    "code": -32600,
-    "message": "Invalid Request",
-    "data": { /* 额外信息 */ }
-  },
-  "id": 1
-}
-```
+## 扩展功能
 
-### 支持的方法
-
-| 方法 | 说明 | 参数 |
-|------|------|------|
-| `health_check` | 健康检查 | 无 |
-| `chat` | AI 聊天 | `message`, `conversation_id`, `context`, `stream` |
-| `generate_code` | 生成代码 | `prompt`, `language`, `context` |
-| `explain_code` | 解释代码 | `code`, `language`, `context` |
-| `refactor_code` | 重构代码 | `code`, `language`, `instructions`, `context` |
-| `review_code` | 审查代码 | `code`, `language`, `context` |
-| `search_code` | 搜索代码 | `query`, `file_patterns` |
-| `shutdown` | 关闭服务器 | 无 |
-
-## 🔒 安全机制
-
-### 文件系统安全
-
-1. **路径验证**：所有文件操作限制在 `WORKSPACE_ROOT` 内
-2. **黑名单**：禁止访问敏感文件（`.env`, `.ssh/`, `.git/config`）
-3. **大小限制**：单个文件最大 10MB
-4. **符号链接**：解析并验证符号链接目标
-
-### 命令执行安全
-
-1. **白名单**：只允许特定命令（`git`, `python`, `npm`）
-2. **参数验证**：检查命令参数合法性
-3. **无交互**：所有命令以非交互模式运行
-4. **超时**：30 秒执行超时
-
-### 资源限制
-
-1. **内存**：最大 500MB（可配置）
-2. **CPU**：监控 CPU 使用率
-3. **并发**：限制并发请求数
-4. **速率限制**：防止 API 滥用
-
-## 🎨 Agent 创建流程
+### 添加新的 Subagent
 
 ```python
-from deepagents import create_deep_agent
-from langchain_openai import ChatOpenAI
-
-# 1. 创建 LLM
-llm = ChatOpenAI(
-    model="qwen-turbo",
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-    api_key=os.getenv("DASHSCOPE_API_KEY"),
-    temperature=0.7,
-)
-
-# 2. 准备自定义工具（可选）
-from tools import ASTTools
-from agents import create_custom_tools
-
-ast_tools = ASTTools()
-custom_tools = create_custom_tools(ast_tools)
-
-# 3. 创建 Agent（自动包含 DeepAgents 中间件）
-agent = create_deep_agent(
+# 1. 在 unified_agent.py 中定义新的 subagent
+test_writer_agent = create_deep_agent(
     model=llm,
-    system_prompt="You are an expert code assistant...",
-    tools=custom_tools,  # 自定义工具
-    # DeepAgents 自动添加：
-    # - TodoListMiddleware (planning)
-    # - FilesystemMiddleware (file ops)
-    # - SubAgentMiddleware (subagents)
+    system_prompt="You are an expert at writing unit tests...",
+    tools=custom_tools,
+    backend=backend
 )
 
-# 4. 调用 Agent
-result = agent.invoke({
-    "messages": [{"role": "user", "content": "Generate a Python function"}]
-})
+# 2. 添加到 subagents 列表
+subagents = [
+    {"name": "code-generator", "agent": code_gen_agent, ...},
+    {"name": "code-explainer", "agent": code_exp_agent, ...},
+    {"name": "refactoring", "agent": refactor_agent, ...},
+    {"name": "test-writer", "agent": test_writer_agent, ...},  # 新增
+]
 
-# 5. 提取结果
-response = result["messages"][-1].content
+# 3. 更新主 agent 的 system_prompt
+system_prompt = """...
+Available subagents:
+- ...
+- test-writer: Write comprehensive unit tests
+"""
 ```
 
-## 📊 数据流
+### 添加新的自定义工具
 
-### 1. 用户请求流程
+```python
+# 在 code_agents.py 中
+@tool
+def run_tests(file_path: str) -> str:
+    """Run tests for a given file"""
+    # 实现测试运行逻辑
+    return test_results
 
-```
-用户操作 (VS Code)
-    ↓
-TypeScript Extension
-    ↓ (构建 JSON-RPC 请求)
-Python Agent Server
-    ↓ (解析请求)
-Agent Server
-    ↓ (调用相应 Agent)
-DeepAgent
-    ↓ (规划、工具调用)
-LLM (Qwen)
-    ↓ (生成响应)
-DeepAgent
-    ↓ (后处理)
-Agent Server
-    ↓ (构建 JSON-RPC 响应)
-TypeScript Extension
-    ↓ (更新 UI)
-用户界面 (WebView)
+# 在 create_custom_tools 中添加
+tools.append(run_tests)
 ```
 
-### 2. Agent 执行流程
+## 最佳实践
 
-```
-Agent.invoke({"messages": [...]})
-    ↓
-LangGraph StateGraph
-    ↓
-DeepAgents Middleware
-    ├─ TodoListMiddleware → 分解任务
-    ├─ FilesystemMiddleware → 文件操作
-    └─ SubAgentMiddleware → 子任务
-    ↓
-Custom Tools (如需要)
-    └─ AST Analysis
-    ↓
-LLM Generate Response
-    ↓
-Return {"messages": [...]}
-```
+### 1. Agent 设计
+- ✅ 保持 subagents 职责单一
+- ✅ 使用清晰的系统提示
+- ✅ 让主 agent 负责分派逻辑
 
-## 🔄 会话管理
+### 2. 工具使用
+- ✅ 优先使用 DeepAgents 内置工具
+- ✅ 自定义工具只做必要的补充
+- ✅ 工具描述要清晰准确
 
-会话由 TypeScript 扩展管理，Python 后端是无状态的：
+### 3. 性能优化
+- ✅ 使用 MemorySaver 而不是数据库（对于短期会话）
+- ✅ 合理设置 thread_id（用户级或会话级）
+- ✅ 定期清理过期的会话数据
 
-1. 每个请求携带 `conversation_id`
-2. TypeScript 维护会话历史
-3. Python 只处理单次请求
-4. 需要历史时通过 `context` 参数传递
+### 4. 错误处理
+- ✅ 所有 RPC 方法都有异常处理
+- ✅ 提供降级方案（fallback mode）
+- ✅ 详细的日志记录
 
-## 🚀 启动流程
+## 参考资源
 
-1. VS Code 扩展激活
-2. TypeScript 启动 Python 子进程
-3. Python 初始化 Agent Server
-4. 加载配置和环境变量
-5. 创建 LLM 客户端
-6. 初始化所有 Agent
-7. 启动 JSON-RPC 服务器
-8. 发送 ready 通知
-9. 进入主循环（监听 stdin）
-
-## 📚 技术细节
-
-### DeepAgents vs 自定义实现
-
-| 功能 | DeepAgents | 自定义实现 |
-|------|-----------|----------|
-| 文件操作 | ✅ 内置（FilesystemMW） | ❌ 需手动实现 |
-| 任务规划 | ✅ 内置（TodoListMW） | ❌ 需手动实现 |
-| 子 Agent | ✅ 内置（SubAgentMW） | ❌ 需手动实现 |
-| LangGraph 集成 | ✅ 自动 | ❌ 需手动配置 |
-| 工具调用 | ✅ 优化 | ⚠️ 基本支持 |
-
-### 为什么使用 DeepAgents？
-
-1. **成熟的框架**：经过充分测试和优化
-2. **内置中间件**：减少重复代码
-3. **标准化**：遵循 LangChain 和 LangGraph 最佳实践
-4. **可扩展**：易于添加自定义工具和子 Agent
-5. **维护性**：由官方团队维护和更新
-
-## 🔍 调试和监控
-
-### 日志级别
-
-- `DEBUG` - 详细的调试信息
-- `INFO` - 一般信息（默认）
-- `WARNING` - 警告信息
-- `ERROR` - 错误信息
-
-### 日志输出
-
-所有日志输出到 `stderr`，不影响 JSON-RPC 通信（使用 `stdin/stdout`）。
-
-### 性能监控
-
-使用 `psutil` 监控：
-- CPU 使用率
-- 内存使用量
-- 进程状态
-
-## 📖 参考资料
-
-- [DeepAgents GitHub](https://github.com/aiwaves-cn/deepagents)
-- [LangChain 文档](https://python.langchain.com/)
+- [DeepAgents 文档](https://github.com/langchain-ai/deepagents)
 - [LangGraph 文档](https://langchain-ai.github.io/langgraph/)
-- [JSON-RPC 2.0 规范](https://www.jsonrpc.org/specification)
-- [DashScope API 文档](https://help.aliyun.com/dashscope/)
+- [VSCode Extension API](https://code.visualstudio.com/api)
+- [JSON-RPC 规范](https://www.jsonrpc.org/specification)
 
----
+## 总结
 
-**版本**: 1.0.0  
-**最后更新**: 2025-11-09  
-**状态**: ✅ 生产就绪
+Vibe Coding 采用**统一 Agent 架构**，通过单一聊天界面实现所有功能：
 
+- 🎯 用户体验类似 Cursor，一个聊天框搞定所有
+- 🤖 智能分派到专业 subagents 处理
+- 💾 统一的会话历史管理
+- 🔧 基于 DeepAgents 的强大工具系统
+- 🚀 易于扩展和维护
 
-
-
-
-
-
+这种架构既保持了功能的专业性，又提供了简洁的用户体验。

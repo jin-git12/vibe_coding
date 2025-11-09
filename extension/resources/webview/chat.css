@@ -430,6 +430,58 @@ body {
     cursor: not-allowed;
 }
 
+/* 模型选择器 */
+.model-selector-container {
+    position: relative;
+}
+
+.model-dropdown {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    min-width: 280px;
+    background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.model-dropdown.hidden {
+    display: none;
+}
+
+.model-option {
+    padding: 10px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    transition: background 0.15s ease;
+}
+
+.model-option:last-child {
+    border-bottom: none;
+}
+
+.model-option:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.model-option .model-name {
+    display: block;
+    font-weight: 500;
+    font-size: 13px;
+    margin-bottom: 2px;
+    color: var(--vscode-foreground);
+}
+
+.model-option .model-desc {
+    display: block;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.8;
+}
+
 /* ============ 滚动条样式 ============ */
 ::-webkit-scrollbar {
     width: 10px;

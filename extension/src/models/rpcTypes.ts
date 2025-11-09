@@ -41,6 +41,7 @@ export enum RpcMethod {
     GetContext = 'get_context',
     AnalyzeProject = 'analyze_project',
     HealthCheck = 'health_check',
+    SwitchModel = 'switch_model',  // 🆕 模型切换
     Shutdown = 'shutdown'
 }
 

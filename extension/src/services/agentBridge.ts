@@ -121,6 +121,22 @@ export class AgentBridge extends EventEmitter {
     }
 
     /**
+     * 切换 LLM 模型
+     */
+    async switchModel(model: string): Promise<{ success: boolean; message: string }> {
+        try {
+            Logger.info(`🔄 AgentBridge.switchModel called with: ${model}`);
+            Logger.info(`📤 Sending RPC request: ${RpcMethod.SwitchModel}`);
+            const result = await this.rpcClient.request(RpcMethod.SwitchModel, { model });
+            Logger.info(`✓ RPC response received: ${JSON.stringify(result)}`);
+            return result;
+        } catch (error) {
+            Logger.error('❌ AgentBridge.switchModel failed', error as Error);
+            throw this.wrapError(error, 'Failed to switch model');
+        }
+    }
+
+    /**
      * 健康检查
      */
     async healthCheck(): Promise<{ status: string; memory_mb: number }> {

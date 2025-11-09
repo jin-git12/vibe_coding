@@ -39,14 +39,10 @@ from utils import (
     SecurityChecker
 )
 from config import get_settings
-from agents import (
-    create_custom_tools,
-    create_code_generator_agent,
-    create_chat_agent,
-    create_code_explainer_agent,
-    create_refactoring_agent,
-)
+from agents import create_custom_tools
+from agents.unified_agent import create_unified_chat_agent
 from tools import ASTTools
+from langgraph.checkpoint.memory import MemorySaver  # 🔧 对话历史管理
 
 
 logger = logging.getLogger(__name__)
@@ -98,39 +94,34 @@ class AgentServer:
             
             # 检查 LLM 是否可用
             if self.llm_client._client is None:
-                logger.warning("LLM client not available, agents will use fallback mode")
-                self.code_generator = None
-                self.chat_agent = None
-                self.code_explainer = None
-                self.refactoring_agent = None
+                logger.warning("LLM client not available, agent will use fallback mode")
+                self.unified_agent = None
                 return
             
             llm = self.llm_client._client
             
-            # 创建各种 Agent (直接使用 create_deep_agent)
-            self.code_generator = create_code_generator_agent(llm, self.custom_tools)
-            logger.info("✓ Code generator agent created")
+            # 🔧 创建 Checkpointer 用于对话历史管理
+            self.checkpointer = MemorySaver()
+            logger.info("✓ Memory checkpointer created")
             
-            self.chat_agent = create_chat_agent(llm, self.custom_tools)
-            logger.info("✓ Chat agent created")
-            
-            self.code_explainer = create_code_explainer_agent(llm, self.custom_tools)
-            logger.info("✓ Code explainer agent created")
-            
-            self.refactoring_agent = create_refactoring_agent(llm, self.custom_tools)
-            logger.info("✓ Refactoring agent created")
-            
-            logger.info("All deep agents initialized successfully!")
+            # 🎯 创建统一的 Chat Agent（包含 subagents）
+            self.unified_agent = create_unified_chat_agent(
+                llm,
+                self.custom_tools,
+                backend=self.checkpointer
+            )
+            logger.info("✓ Unified agent created with 3 specialized subagents:")
+            logger.info("   • code-generator: Generate new code")
+            logger.info("   • code-explainer: Explain existing code")  
+            logger.info("   • refactoring: Improve code quality")
+            logger.info("🎉 All operations unified through one intelligent agent!")
             
         except Exception as e:
-            logger.error(f"Failed to initialize deep agents: {e}")
+            logger.error(f"Failed to initialize unified agent: {e}")
             import traceback
             traceback.print_exc()
             # 降级到无 Agent 模式
-            self.code_generator = None
-            self.chat_agent = None
-            self.code_explainer = None
-            self.refactoring_agent = None
+            self.unified_agent = None
     
     def register_methods(self):
         """注册所有 RPC 方法"""
@@ -141,6 +132,7 @@ class AgentServer:
         self.rpc_server.register_method("refactor_code", self.refactor_code)
         self.rpc_server.register_method("review_code", self.review_code)
         self.rpc_server.register_method("search_code", self.search_code)
+        self.rpc_server.register_method("switch_model", self.switch_model)  # 🆕 模型切换
         self.rpc_server.register_method("shutdown", self.shutdown)
     
     def health_check(self, params: dict) -> dict:
@@ -149,12 +141,67 @@ class AgentServer:
         return {
             "status": "ok",
             "workspace": self.workspace_root,
+            "current_model": self.settings.llm_model,  # 包含当前模型
             "methods": list(self.rpc_server.methods.keys())
         }
     
+    def switch_model(self, params: dict) -> dict:
+        """
+        动态切换 LLM 模型
+        
+        参数:
+            model: str - 新的模型名称
+        """
+        logger.info(f"🔧 switch_model called with params: {params}")
+        
+        new_model = params.get('model')
+        if not new_model:
+            logger.error("Model name is missing in params")
+            raise AgentError("Model name is required")
+        
+        old_model = self.settings.llm_model
+        
+        try:
+            logger.info(f"📝 Switching model from {old_model} to {new_model}")
+            
+            # 更新配置
+            self.settings.llm_model = new_model
+            
+            # 重新创建 LLM 客户端
+            llm_config = LLMConfig(
+                provider=self.settings.llm_provider,
+                api_key=self.settings.llm_api_key,
+                api_base=self.settings.llm_api_base,
+                model=new_model,  # 使用新模型
+                temperature=self.settings.llm_temperature,
+                max_tokens=self.settings.llm_max_tokens
+            )
+            self.llm_client = get_llm_client(llm_config)
+            
+            # 重新初始化 agents
+            self._initialize_agents()
+            
+            logger.info(f"✓ Model switched successfully: {old_model} → {new_model}")
+            
+            return {
+                "success": True,
+                "old_model": old_model,
+                "new_model": new_model,
+                "message": f"Model switched from {old_model} to {new_model}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to switch model: {e}")
+            # 回滚到旧模型
+            self.settings.llm_model = old_model
+            raise AgentError(f"Failed to switch model: {str(e)}")
+    
     def chat(self, params: dict) -> dict:
         """
-        AI 聊天 (使用 DeepAgent)
+        AI 聊天 (使用统一的 Unified Agent)
+        
+        所有操作（聊天、代码生成、解释、重构）都通过这个方法完成
+        Agent 会自动判断是否需要委派给 subagent
         
         参数:
             message: str - 用户消息
@@ -165,18 +212,22 @@ class AgentServer:
         logger.info(f"Chat request: {params.get('message', '')[:50]}...")
         
         try:
-            if self.chat_agent is None:
+            if self.unified_agent is None:
                 # 降级模式：返回模拟响应
                 return {
                     "conversation_id": params.get("conversation_id", "default"),
-                    "full_response": f"[Fallback Mode] Received: {params.get('message', '')}",
+                    "full_response": f"[Fallback Mode] Agent not initialized: {params.get('message', '')}",
                     "suggestions": []
                 }
             
-            # 调用 DeepAgent (正确方式)
-            result = self.chat_agent.invoke({
-                "messages": [{"role": "user", "content": params.get("message", "")}]
-            })
+            # 🔧 获取会话 ID（用于对话历史管理）
+            conversation_id = params.get("conversationId") or params.get("conversation_id", "default")
+            
+            # 调用统一 Agent with thread_id 支持对话历史
+            result = self.unified_agent.invoke(
+                {"messages": [{"role": "user", "content": params.get("message", "")}]},
+                {"configurable": {"thread_id": conversation_id}}  # 🔧 使用 thread_id 管理对话历史
+            )
             
             # 提取响应
             messages = result.get("messages", [])
@@ -218,7 +269,9 @@ class AgentServer:
     
     def generate_code(self, params: dict) -> dict:
         """
-        生成代码 (使用 DeepAgent)
+        生成代码 (委派给统一 Agent)
+        
+        统一 Agent 会自动使用 code-generator subagent 处理
         
         参数:
             prompt: str - 生成提示
@@ -228,10 +281,10 @@ class AgentServer:
         """
         prompt = params.get('prompt', '')
         language = params.get('language', 'python')
-        logger.info(f"Generate code: {prompt[:50]}... (language: {language})")
+        logger.info(f"Generate code request: {prompt[:50]}... (language: {language})")
         
         try:
-            if self.code_generator is None:
+            if self.unified_agent is None:
                 # 降级模式
                 code = f"""# Generated code for: {prompt}
 # Language: {language}
@@ -246,8 +299,8 @@ def placeholder():
                     "suggestions": ["Configure API key to enable real code generation"]
                 }
             
-            # 调用 DeepAgent (正确方式)
-            result = self.code_generator.invoke({
+            # 调用统一 Agent（会自动委派给 code-generator subagent）
+            result = self.unified_agent.invoke({
                 "messages": [{
                     "role": "user",
                     "content": f"Generate {language} code: {prompt}"
@@ -285,7 +338,9 @@ def placeholder():
     
     def explain_code(self, params: dict) -> dict:
         """
-        解释代码 (使用 DeepAgent)
+        解释代码 (委派给统一 Agent)
+        
+        统一 Agent 会自动使用 code-explainer subagent 处理
         
         参数:
             code: str - 要解释的代码
@@ -294,20 +349,20 @@ def placeholder():
         code = params.get("code", "")
         language = params.get("language", "python")
         
-        logger.info(f"Explain code (language: {language})")
+        logger.info(f"Explain code request (language: {language})")
         
         try:
-            if self.code_explainer is None:
+            if self.unified_agent is None:
                 return {
                     "summary": f"[Fallback] {language} code",
-                    "detailed_explanation": "LLM not configured for code explanation",
+                    "detailed_explanation": "Agent not initialized",
                     "key_concepts": [],
                     "complexity": "Unknown",
                     "potential_issues": []
                 }
             
-            # 调用 DeepAgent (正确方式)
-            result = self.code_explainer.invoke({
+            # 调用统一 Agent（会自动委派给 code-explainer subagent）
+            result = self.unified_agent.invoke({
                 "messages": [{
                     "role": "user",
                     "content": f"Please explain this {language} code:\n\n```{language}\n{code}\n```"
@@ -336,7 +391,9 @@ def placeholder():
     
     def refactor_code(self, params: dict) -> dict:
         """
-        重构代码 (使用 DeepAgent)
+        重构代码 (委派给统一 Agent)
+        
+        统一 Agent 会自动使用 refactoring subagent 处理
         
         参数:
             code: str - 要重构的代码
@@ -347,18 +404,18 @@ def placeholder():
         instructions = params.get("instructions", "")
         language = params.get("language", "python")
         
-        logger.info(f"Refactor code: {instructions}")
+        logger.info(f"Refactor code request: {instructions}")
         
         try:
-            if self.refactoring_agent is None:
+            if self.unified_agent is None:
                 return {
                     "refactored_code": code + "\n# Refactored (fallback mode)",
-                    "changes": [{"type": "none", "description": "LLM not configured"}],
+                    "changes": [{"type": "none", "description": "Agent not initialized"}],
                     "diff": "N/A"
                 }
             
-            # 调用 DeepAgent (正确方式)
-            result = self.refactoring_agent.invoke({
+            # 调用统一 Agent（会自动委派给 refactoring subagent）
+            result = self.unified_agent.invoke({
                 "messages": [{
                     "role": "user",
                     "content": f"""Please refactor this {language} code according to: {instructions}

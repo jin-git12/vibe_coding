@@ -79,7 +79,8 @@ export class PythonProcessService extends EventEmitter {
                 WORKSPACE_ROOT: this.workspacePath,
                 DASHSCOPE_API_KEY: config.dashscopeApiKey || '',
                 DASHSCOPE_BASE_URL: config.dashscopeBaseUrl || '',
-                DASHSCOPE_MODEL: config.model || 'qwen-turbo',
+                LLM_MODEL: config.model || 'qwen-turbo',  // ✅ 使用 LLM_MODEL（通用）
+                DASHSCOPE_MODEL: config.model || 'qwen-turbo',  // 向后兼容
                 LOG_LEVEL: isDevelopment ? 'DEBUG' : 'INFO',
                 DEV_MODE: isDevelopment ? 'true' : 'false',  // 🔧 开发模式标志
                 PYTHONUNBUFFERED: '1',

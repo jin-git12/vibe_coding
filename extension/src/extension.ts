@@ -93,10 +93,23 @@ export async function activate(context: vscode.ExtensionContext) {
             })
         );
 
-        // 监听配置变化
+        // 监听配置变化（排除模型变化，因为我们用 RPC 动态切换）
+        let lastModel = ConfigManager.getConfig().model;
         context.subscriptions.push(
             ConfigManager.onConfigChange(() => {
-                Logger.info('Configuration changed, restarting Python process...');
+                const currentConfig = ConfigManager.getConfig();
+                const currentModel = currentConfig.model;
+                
+                // 如果只是模型改变，不重启进程（用 RPC 动态切换）
+                if (currentModel !== lastModel && lastModel) {
+                    Logger.info(`Model changed: ${lastModel} → ${currentModel} (will use RPC switch, no restart)`);
+                    lastModel = currentModel;
+                    return; // 不重启
+                }
+                
+                // 其他配置改变（API Key、Base URL 等）需要重启
+                Logger.info('Configuration changed (non-model), restarting Python process...');
+                lastModel = currentModel;
                 pythonProcessService?.restart().catch(err => {
                     Logger.error('Failed to restart after config change', err);
                 });

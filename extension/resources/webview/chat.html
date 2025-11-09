@@ -37,10 +37,34 @@
             <!-- 工具栏 -->
             <div class="input-toolbar">
                 <!-- 左侧：模型选择 -->
-                <button class="toolbar-btn" id="model-selector" title="Select Model">
-                    <span class="toolbar-label">Sonnet 4.5</span>
-                    <span class="codicon codicon-chevron-down"></span>
-                </button>
+                <div class="model-selector-container">
+                    <button class="toolbar-btn" id="model-selector" title="Select Model">
+                        <span class="toolbar-label" id="current-model-label">qwen-turbo</span>
+                        <span class="codicon codicon-chevron-down"></span>
+                    </button>
+                    <div class="model-dropdown hidden" id="model-dropdown">
+                        <div class="model-option" data-model="qwen-turbo">
+                            <span class="model-name">Qwen Turbo</span>
+                            <span class="model-desc">快速响应，适合日常使用</span>
+                        </div>
+                        <div class="model-option" data-model="qwen-plus">
+                            <span class="model-name">Qwen Plus</span>
+                            <span class="model-desc">平衡性能，推荐使用</span>
+                        </div>
+                        <div class="model-option" data-model="qwen-max">
+                            <span class="model-name">Qwen Max</span>
+                            <span class="model-desc">最强性能，复杂任务</span>
+                        </div>
+                        <div class="model-option" data-model="qwen3-coder-plus">
+                            <span class="model-name">Qwen3 Coder Plus</span>
+                            <span class="model-desc">代码专用，编程优化</span>
+                        </div>
+                        <div class="model-option" data-model="claude-sonnet-4-5">
+                            <span class="model-name">Claude Sonnet 4.5</span>
+                            <span class="model-desc">Anthropic Claude，高质量</span>
+                        </div>
+                    </div>
+                </div>
                 
                 <div class="toolbar-spacer"></div>
                 

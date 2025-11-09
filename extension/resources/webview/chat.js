@@ -7,11 +7,15 @@
     const loadingIndicator = document.getElementById('loading');
     const suggestionsContainer = document.getElementById('suggestions');
     const conversationTabsContainer = document.getElementById('conversation-tabs');
+    const modelSelector = document.getElementById('model-selector');
+    const modelDropdown = document.getElementById('model-dropdown');
+    const currentModelLabel = document.getElementById('current-model-label');
 
     let currentAssistantMessage = null;
     let currentStreamContent = '';
     let conversations = new Map(); // conversationId -> {title, messages}
     let activeConversationId = null;
+    let selectedModel = 'qwen-turbo'; // 默认模型
 
     // 初始化：创建第一个会话
     function init() {
@@ -173,7 +177,8 @@
         vscode.postMessage({
             type: 'sendMessage',
             message: message,
-            conversationId: activeConversationId
+            conversationId: activeConversationId,
+            model: selectedModel  // 包含选择的模型
         });
 
         messageInput.value = '';
@@ -391,6 +396,37 @@
             case 'createNewConversation':
                 createNewConversation();
                 break;
+        }
+    });
+
+    // 模型选择器事件
+    modelSelector.addEventListener('click', (e) => {
+        e.stopPropagation();
+        modelDropdown.classList.toggle('hidden');
+    });
+
+    // 点击模型选项
+    document.querySelectorAll('.model-option').forEach(option => {
+        option.addEventListener('click', () => {
+            const model = option.dataset.model;
+            const modelName = option.querySelector('.model-name').textContent;
+            
+            selectedModel = model;
+            currentModelLabel.textContent = modelName;
+            modelDropdown.classList.add('hidden');
+            
+            // 通知扩展模型已更改
+            vscode.postMessage({
+                type: 'modelChanged',
+                model: model
+            });
+        });
+    });
+
+    // 点击其他地方关闭下拉菜单
+    document.addEventListener('click', (e) => {
+        if (!modelSelector.contains(e.target)) {
+            modelDropdown.classList.add('hidden');
         }
     });
 

@@ -16,6 +16,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private view?: vscode.WebviewView;
     private currentConversation: Conversation | null = null;
     private conversations: Map<string, Conversation> = new Map();
+    private selectedModel: string = 'qwen-turbo'; // 当前选择的模型
 
     constructor(
         private readonly extensionUri: vscode.Uri,
@@ -55,7 +56,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     /**
      * 发送消息到 AI
      */
-    async sendMessage(message: string): Promise<void> {
+    async sendMessage(message: string, model?: string): Promise<void> {
+        // 如果提供了模型参数，更新选择的模型
+        if (model) {
+            this.selectedModel = model;
+            await ConfigManager.setModel(model);
+        }
         if (!this.currentConversation) {
             this.newConversation();
         }
@@ -224,7 +230,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private async handleMessage(data: any): Promise<void> {
         switch (data.type) {
             case 'sendMessage':
-                await this.sendMessage(data.message);
+                await this.sendMessage(data.message, data.model);
+                break;
+
+            case 'modelChanged':
+                Logger.info(`📝 Received modelChanged event: ${data.model}`);
+                // 更新选择的模型
+                this.selectedModel = data.model;
+                await ConfigManager.setModel(data.model);
+                Logger.info(`✓ Config updated with model: ${data.model}`);
+                
+                // 🔧 调用后端切换模型
+                try {
+                    Logger.info(`🔄 Calling agentBridge.switchModel(${data.model})`);
+                    const result = await this.agentBridge.switchModel(data.model);
+                    Logger.info(`✓ Model switched successfully: ${JSON.stringify(result)}`);
+                    vscode.window.showInformationMessage(`Model switched to: ${data.model}`);
+                } catch (error) {
+                    Logger.error('❌ Failed to switch model', error as Error);
+                    vscode.window.showErrorMessage(`Failed to switch model: ${(error as Error).message}`);
+                }
                 break;
 
             case 'newConversation':

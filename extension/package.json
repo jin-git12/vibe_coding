@@ -163,9 +163,18 @@
           "enum": [
             "qwen-turbo",
             "qwen-plus",
-            "qwen-max"
+            "qwen-max",
+            "qwen3-coder-plus",
+            "claude-sonnet-4-5"
           ],
-          "description": "Qwen model to use",
+          "enumDescriptions": [
+            "Qwen Turbo - 快速响应，适合日常使用",
+            "Qwen Plus - 平衡性能，推荐使用",
+            "Qwen Max - 最强性能，复杂任务",
+            "Qwen3 Coder Plus - 代码专用，编程优化",
+            "Claude Sonnet 4.5 - Anthropic Claude，高质量"
+          ],
+          "description": "选择要使用的 LLM 模型",
           "order": 2
         },
         "vibe-coding.dashscopeBaseUrl": {
@@ -206,7 +215,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile",
-    "test": "node ./out/test/runTest.js",
+    "test": "cross-env NODE_OPTIONS='--no-deprecation' node ./out/test/runTest.js",
     "package": "vsce package --no-dependencies",
     "lint": "eslint src --ext ts"
   },
