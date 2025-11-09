@@ -24,6 +24,25 @@ from .errors import (
 logger = logging.getLogger(__name__)
 
 
+def sanitize_for_json(obj):
+    """
+    清理对象中的无效 Unicode 字符，确保可以安全地进行 JSON 序列化
+    
+    处理孤立的代理字符（surrogate），这些字符在 UTF-8 编码中是无效的
+    """
+    if isinstance(obj, str):
+        # 使用 'ignore' 错误处理器清理无效字符
+        return obj.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(sanitize_for_json(item) for item in obj)
+    else:
+        return obj
+
+
 class JSONRPCServer:
     """JSON-RPC 服务器"""
     
@@ -39,6 +58,8 @@ class JSONRPCServer:
     def send_response(self, response: JSONRPCResponse):
         """发送响应到 stdout"""
         data = response.to_dict()
+        # 清理无效的 Unicode 字符
+        data = sanitize_for_json(data)
         json_str = json.dumps(data, ensure_ascii=False)
         sys.stdout.write(json_str + '\n')
         sys.stdout.flush()
@@ -52,6 +73,8 @@ class JSONRPCServer:
             id=request_id
         )
         data = response.to_dict()
+        # 清理无效的 Unicode 字符
+        data = sanitize_for_json(data)
         json_str = json.dumps(data, ensure_ascii=False)
         sys.stdout.write(json_str + '\n')
         sys.stdout.flush()
@@ -65,6 +88,8 @@ class JSONRPCServer:
             params=params
         )
         data = notification.to_dict()
+        # 清理无效的 Unicode 字符
+        data = sanitize_for_json(data)
         json_str = json.dumps(data, ensure_ascii=False)
         sys.stdout.write(json_str + '\n')
         sys.stdout.flush()

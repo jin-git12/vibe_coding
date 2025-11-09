@@ -66,6 +66,13 @@ export class PythonProcessService extends EventEmitter {
                 throw new Error(`Python agents directory not found: ${pythonAgentsDir}`);
             }
 
+            // 检查是否为开发模式（F5 调试）
+            // 如果通过 F5 启动扩展，通常不会打包，所以 extensionPath 包含源码目录
+            const isDevelopment = process.env.VSCODE_DEBUG_MODE === 'true' || 
+                                  !this.extensionPath.endsWith('.vsix');
+            
+            Logger.info(`Development mode: ${isDevelopment}`);
+            
             // 环境变量
             const env = {
                 ...process.env,
@@ -73,8 +80,11 @@ export class PythonProcessService extends EventEmitter {
                 DASHSCOPE_API_KEY: config.dashscopeApiKey || '',
                 DASHSCOPE_BASE_URL: config.dashscopeBaseUrl || '',
                 DASHSCOPE_MODEL: config.model || 'qwen-turbo',
-                LOG_LEVEL: 'INFO',
-                PYTHONUNBUFFERED: '1'
+                LOG_LEVEL: isDevelopment ? 'DEBUG' : 'INFO',
+                DEV_MODE: isDevelopment ? 'true' : 'false',  // 🔧 开发模式标志
+                PYTHONUNBUFFERED: '1',
+                PYTHONIOENCODING: 'utf-8',  // 🔧 强制使用 UTF-8 编码（解决 Windows GBK 问题）
+                PYTHONUTF8: '1'  // 🔧 Python 3.7+ UTF-8 模式
             };
 
             // 使用 uv run 启动进程
