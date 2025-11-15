@@ -104,16 +104,27 @@ class AgentServer:
             self.checkpointer = MemorySaver()
             logger.info("✓ Memory checkpointer created")
             
-            # 🎯 创建统一的 Chat Agent（包含 subagents）
+            # 🔧 创建 FilesystemBackend 将文件保存到真实磁盘
+            from deepagents.backends import FilesystemBackend
+            workspace_dir = self.settings.get_workspace_dir()
+            workspace_dir.mkdir(parents=True, exist_ok=True)
+            filesystem_backend = FilesystemBackend(
+                root_dir=str(workspace_dir),
+                virtual_mode=True  # 使用虚拟路径模式
+            )
+            logger.info(f"✓ Filesystem backend created: {workspace_dir}")
+            if self.settings.workspace_dir:
+                logger.info(f"   Custom workspace configured: {self.settings.workspace_dir}")
+            
+            # 🎯 创建统一的 Chat Agent
             self.unified_agent = create_unified_chat_agent(
                 llm,
                 self.custom_tools,
-                backend=self.checkpointer
+                backend=filesystem_backend  # 使用真实文件系统
             )
-            logger.info("✓ Unified agent created with 3 specialized subagents:")
-            logger.info("   • code-generator: Generate new code")
-            logger.info("   • code-explainer: Explain existing code")  
-            logger.info("   • refactoring: Improve code quality")
+            logger.info("✓ Unified agent created (single DeepAgent with all capabilities)")
+            logger.info("   • Can generate, explain, and refactor code")
+            logger.info(f"   • Files saved to: {workspace_dir}")
             logger.info("🎉 All operations unified through one intelligent agent!")
             
         except Exception as e:
@@ -133,6 +144,7 @@ class AgentServer:
         self.rpc_server.register_method("review_code", self.review_code)
         self.rpc_server.register_method("search_code", self.search_code)
         self.rpc_server.register_method("switch_model", self.switch_model)  # 🆕 模型切换
+        self.rpc_server.register_method("switch_workspace", self.switch_workspace)  # 🆕 工作区切换
         self.rpc_server.register_method("shutdown", self.shutdown)
     
     def health_check(self, params: dict) -> dict:
@@ -141,6 +153,7 @@ class AgentServer:
         return {
             "status": "ok",
             "workspace": self.workspace_root,
+            "workspace_dir": str(self.settings.get_workspace_dir()),  # 实际文件保存路径
             "current_model": self.settings.llm_model,  # 包含当前模型
             "methods": list(self.rpc_server.methods.keys())
         }
@@ -195,6 +208,60 @@ class AgentServer:
             # 回滚到旧模型
             self.settings.llm_model = old_model
             raise AgentError(f"Failed to switch model: {str(e)}")
+    
+    def switch_workspace(self, params: dict) -> dict:
+        """
+        动态切换工作区目录
+        
+        用于 VSCode 插件场景：当用户打开不同工程时，动态切换 Agent 的文件操作目标目录
+        
+        参数:
+            workspace_dir: str - 新的工作区目录路径（绝对路径或相对于 workspace_root 的相对路径）
+        """
+        logger.info(f"🔧 switch_workspace called with params: {params}")
+        
+        new_workspace = params.get('workspace_dir') or params.get('workspaceDir')
+        if not new_workspace:
+            logger.error("workspace_dir is missing in params")
+            raise AgentError("workspace_dir is required")
+        
+        old_workspace = str(self.settings.get_workspace_dir())
+        
+        try:
+            logger.info(f"📁 Switching workspace from {old_workspace} to {new_workspace}")
+            
+            # 更新配置
+            self.settings.workspace_dir = new_workspace
+            
+            # 获取实际的工作区路径
+            new_workspace_path = self.settings.get_workspace_dir()
+            
+            # 验证路径
+            if not new_workspace_path.parent.exists():
+                raise AgentError(f"Parent directory does not exist: {new_workspace_path.parent}")
+            
+            # 创建工作区目录
+            new_workspace_path.mkdir(parents=True, exist_ok=True)
+            
+            # 重新初始化 agents（使用新的 workspace）
+            self._initialize_agents()
+            
+            logger.info(f"✓ Workspace switched successfully")
+            logger.info(f"   Old: {old_workspace}")
+            logger.info(f"   New: {new_workspace_path}")
+            
+            return {
+                "success": True,
+                "old_workspace": old_workspace,
+                "new_workspace": str(new_workspace_path),
+                "message": f"Workspace switched to {new_workspace_path}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to switch workspace: {e}")
+            import traceback
+            traceback.print_exc()
+            raise AgentError(f"Failed to switch workspace: {str(e)}")
     
     def chat(self, params: dict) -> dict:
         """

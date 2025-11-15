@@ -4,3 +4,9 @@ node_modules
 *.vsix
 .DS_Store
 
+# LangGraph Studio local data
+python_agents/.langgraph_api/
+
+# ✅ Agent 生成的文件会保存在 workspace/ 中（不忽略，可以被 Git 跟踪）
+# python_agents/workspace/
+

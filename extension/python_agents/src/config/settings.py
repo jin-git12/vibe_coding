@@ -10,17 +10,31 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# 🔧 加载 .env 文件（开发时使用）
+try:
+    from dotenv import load_dotenv
+    # 只在开发模式或者 .env 存在时加载
+    env_file = Path(__file__).parent.parent.parent / ".env"
+    if env_file.exists():
+        load_dotenv(env_file)
+        logger.debug(f"Loaded environment from {env_file}")
+except ImportError:
+    logger.debug("python-dotenv not installed, skipping .env file")
+except Exception as e:
+    logger.warning(f"Failed to load .env file: {e}")
+
 
 @dataclass
 class Settings:
     """全局配置"""
     
-    # 工作区
+    # 工作区配置
     workspace_root: str = field(default_factory=os.getcwd)
+    workspace_dir: Optional[str] = None  # Agent 生成文件的目标目录，默认为 workspace_root/workspace
     
     # LLM 配置
     llm_provider: str = "dashscope"
-    llm_model: str = "qwen-max"
+    llm_model: str = "qwen-turbo"  # 默认模型改为 qwen-turbo（更快）
     llm_api_key: Optional[str] = None
     llm_api_base: Optional[str] = None
     llm_temperature: float = 0.7
@@ -60,10 +74,11 @@ class Settings:
         
         return cls(
             workspace_root=os.environ.get("WORKSPACE_ROOT", os.getcwd()),
+            workspace_dir=os.environ.get("WORKSPACE_DIR"),  # 如果未设置，将使用默认路径
             
             # LLM
             llm_provider=os.environ.get("LLM_PROVIDER", "dashscope"),
-            llm_model=os.environ.get("LLM_MODEL", "qwen-turbo" if dev_mode else "qwen-max"),
+            llm_model=os.environ.get("LLM_MODEL", "qwen-turbo"),  # 默认使用 qwen-turbo
             llm_api_key=os.environ.get("DASHSCOPE_API_KEY") or os.environ.get("OPENAI_API_KEY") or dev_api_key,
             llm_api_base=os.environ.get("LLM_API_BASE"),
             llm_temperature=float(os.environ.get("LLM_TEMPERATURE", "0.7")),
@@ -92,6 +107,27 @@ class Settings:
             enable_tools=os.environ.get("ENABLE_TOOLS", "true").lower() == "true",
             enable_code_execution=os.environ.get("ENABLE_CODE_EXECUTION", "false").lower() == "true",
         )
+    
+    def get_workspace_dir(self) -> Path:
+        """
+        获取实际的 workspace 目录路径
+        
+        如果 workspace_dir 已设置，直接使用；
+        否则使用 workspace_root/workspace 作为默认路径
+        
+        Returns:
+            Path: workspace 目录的绝对路径
+        """
+        if self.workspace_dir:
+            # 使用配置的路径
+            workspace_path = Path(self.workspace_dir)
+            # 如果是相对路径，相对于 workspace_root 解析
+            if not workspace_path.is_absolute():
+                workspace_path = Path(self.workspace_root) / workspace_path
+            return workspace_path.resolve()
+        else:
+            # 默认：workspace_root/workspace
+            return (Path(self.workspace_root) / "workspace").resolve()
     
     def validate(self) -> bool:
         """验证配置是否有效"""
@@ -129,6 +165,7 @@ class Settings:
         """转换为字典"""
         return {
             "workspace_root": self.workspace_root,
+            "workspace_dir": str(self.get_workspace_dir()),  # 显示实际使用的路径
             "llm_provider": self.llm_provider,
             "llm_model": self.llm_model,
             "llm_temperature": self.llm_temperature,
